@@ -15,19 +15,34 @@ public class Main {
         MapRanges seedToSoil = new MapRanges(List.of(new MapRange(50, 98, 2), new MapRange(52, 50, 48)));
         MapRanges soilToFertilizer = new MapRanges(List.of(new MapRange(0, 15, 37), new MapRange(37, 52, 2), new MapRange(39, 0, 15)));
 
-        long highBoundInclusive = seedToSoil.getMaxNotIntoItselfSrc();
-        for (int i = 0; i <= highBoundInclusive; ++i) {
-            if (seedToSoil.applyAsLong(i) != seedToSoil.get(i)) {
-                throw new RuntimeException("seedToSoil on %d".formatted(i));
-            }
-        }
+        MapRanges result = Helper.composition(seedToSoil, soilToFertilizer);
 
-        highBoundInclusive = soilToFertilizer.getMaxNotIntoItselfSrc();
-        for (int i = 0; i <= highBoundInclusive; ++i) {
-            if (soilToFertilizer.applyAsLong(i) != soilToFertilizer.get(i)) {
-                throw new RuntimeException("soilToFertilizer on %d".formatted(i));
-            }
-        }
+
+//        List<MapRange> sortedBySrcBeginState = soilToFertilizer.getCopyOfSortedBySrcBegin();
+//        Helper.processRangeWhenItStartingOf(2, new MapRange(52, 50, 48), sortedBySrcBeginState);
+
+//        List<Integer> list = List.of(5, 10, 17, 23, 28, 34, 39);
+//        log.debug("1: {}, {}", Collections.binarySearch(list, 1), Collections.binarySearch(list, 3));
+//        log.debug("2: {}, {}", Collections.binarySearch(list, 3), Collections.binarySearch(list, 7));
+//        log.debug("3: {}, {}", Collections.binarySearch(list, 12), Collections.binarySearch(list, 14));
+//        log.debug("4: {}, {}", Collections.binarySearch(list, 12), Collections.binarySearch(list, 30));
+//        log.debug("5: {}, {}", Collections.binarySearch(list, 25), Collections.binarySearch(list, 44));
+//        log.debug("6: {}, {}", Collections.binarySearch(list, 41), Collections.binarySearch(list, 44));
+
+
+//        long highBoundInclusive = seedToSoil.getMaxNotIntoItselfSrc();
+//        for (int i = 0; i <= highBoundInclusive; ++i) {
+//            if (seedToSoil.applyAsLong(i) != seedToSoil.get(i)) {
+//                throw new RuntimeException("seedToSoil on %d".formatted(i));
+//            }
+//        }
+//
+//        highBoundInclusive = soilToFertilizer.getMaxNotIntoItselfSrc();
+//        for (int i = 0; i <= highBoundInclusive; ++i) {
+//            if (soilToFertilizer.applyAsLong(i) != soilToFertilizer.get(i)) {
+//                throw new RuntimeException("soilToFertilizer on %d".formatted(i));
+//            }
+//        }
 
 
 
@@ -79,35 +94,14 @@ class MapRanges implements LongUnaryOperator {
         return log.exit(sortedBySrcBegin.isEmpty() ? null : sortedBySrcBegin.getLast().getSrcEnd());
     }
 
-    @Override
-    public long applyAsLong(long operand) {
-        log.entry(operand);
-
-        if (sortedBySrcBegin.isEmpty()) {
-            return log.exit(operand);
-        }
-        int indexOfRange = Collections.binarySearch(sortedBySrcBegin, MapRange.ofItem(operand), Helper.CMP_BY_SRC_BEGIN);
-        log.debug("index for {} is {}", operand, indexOfRange);
-        if (indexOfRange >= 0) {
-            return log.exit(sortedBySrcBegin.get(indexOfRange).dstBegin());
-        }
-
-        indexOfRange = -(indexOfRange + 2);
-        if (indexOfRange < 0) {
-            return log.exit(operand);
-        }
-        MapRange range = sortedBySrcBegin.get(indexOfRange);
-        log.debug("candidate range: {}", range);
-
-        return log.exit(operand > range.getSrcEnd() ? operand : operand + range.getShift());
+    public List<MapRange> getCopyOfSortedBySrcBegin() {
+        return new ArrayList<>(sortedBySrcBegin);
     }
 
-    public long get(long val) {
+    @Override
+    public long applyAsLong(long val) {
         return Helper.resolveRange(val, sortedBySrcBegin).map(mapRange -> mapRange.getShift() + val).orElse(val);
     }
-
-
-
 
     public Map<Long, Long> asMap() {
         log.entry();
@@ -137,6 +131,9 @@ record MapRange(long dstBegin, long srcBegin, long length) {
     private MapRange(long item) {
         this(item, item, 1);
     }
+    boolean isEmpty() {
+        return length <= 0;
+    }
     long getSrcEndExclusive() {
         return srcBegin + length;
     }
@@ -161,8 +158,7 @@ record MapRange(long dstBegin, long srcBegin, long length) {
 @UtilityClass
 @XSlf4j
 class Helper {
-    //  todo private
-    static final Comparator<MapRange> CMP_BY_SRC_BEGIN = (o1, o2) -> Long.compare(o1.srcBegin(), o2.srcBegin());
+    private static final Comparator<MapRange> CMP_BY_SRC_BEGIN = Comparator.comparingLong(MapRange::srcBegin);
 
     List<MapRange> sortBySrcBegin(Collection<MapRange> mapRanges) {
         log.entry(mapRanges);
@@ -235,6 +231,146 @@ class Helper {
         log.debug("candidate range: {}", range);
 
         return log.exit(val > range.getSrcEnd() ? Optional.empty() : Optional.of(range));
+    }
+
+    MapRanges composition(@Nonnull MapRanges first, @Nonnull MapRanges second) {
+        log.entry(first, second);
+
+        List<MapRange> firstList = first.getCopyOfSortedBySrcBegin();
+        List<MapRange> stateList = second.getCopyOfSortedBySrcBegin();
+        List<MapRange> resultList = new ArrayList<>();
+
+        for (MapRange range: firstList) {
+            List<MapRange> rangeResultList = processRange(range, stateList);
+            resultList.addAll(rangeResultList);
+        }
+        resultList.addAll(stateList);
+
+        return log.exit(new MapRanges(resultList));
+    }
+
+    List<MapRange> processRange(@Nonnull MapRange range, @Nonnull List<MapRange> sortedState) {
+        log.entry(range, sortedState);
+
+        if (sortedState.isEmpty()) {
+            return log.exit(List.of(range));
+        }
+
+        int indexOfRange = Collections.binarySearch(sortedState, MapRange.ofItem(range.dstBegin()), CMP_BY_SRC_BEGIN);
+        log.debug("index for {} is {}", range, indexOfRange);
+        if (indexOfRange >= 0) {
+            return processRangeWhenItStartingOf(indexOfRange, range, sortedState);
+        }
+        int insertionPoint = -indexOfRange - 1;
+        if (insertionPoint == 0) {
+            return processRangeWhenItBeforeOf(0, range, sortedState);
+        }
+        //  есть интервал слева
+        MapRange leftRange = sortedState.get(insertionPoint - 1);
+        if (leftRange.getSrcEnd() < range.dstBegin()) {
+            //  с интервалом слева не пересекается
+            return processRangeWhenItBeforePossibleOf(insertionPoint, range, sortedState);
+        }
+        //  есть пересечение с интервалом слева
+        return processRangeWhenItStartingInsideOf(insertionPoint - 1, range, sortedState);
+    }
+
+    //  точка начала интервала dst range точно нах-ся внутри интервала src sortedState[index]
+    List<MapRange> processRangeWhenItStartingInsideOf(int index, @Nonnull MapRange range, @Nonnull List<MapRange> sortedState) {
+        List<MapRange> rv = new ArrayList<>();
+        MapRange stateRange = sortedState.get(index);
+
+        long lengthBeforeStartIntersect = range.dstBegin() - stateRange.srcBegin();
+        //  пересечение
+        MapRange newRange = new MapRange(stateRange.dstBegin() + lengthBeforeStartIntersect, range.srcBegin(), Math.min(range.length(), stateRange.length() - lengthBeforeStartIntersect));
+        rv.add(newRange);
+
+        //  точно в состоянии останется интервал до начала пересечения
+        sortedState.set(index, new MapRange(stateRange.dstBegin(), stateRange.srcBegin(), lengthBeforeStartIntersect));
+        if (range.length() == newRange.length()) {
+            //  весь интервал обработан
+            //  в состояние возможно надо вставить остаток исходного интервала состояния
+            long shiftFromStateRangeBegin = newRange.length() + lengthBeforeStartIntersect;
+            MapRange tailStateRange = new MapRange(stateRange.dstBegin() + shiftFromStateRangeBegin, stateRange.srcBegin() + shiftFromStateRangeBegin, stateRange.length() - shiftFromStateRangeBegin);
+            if (!tailStateRange.isEmpty()) {
+                sortedState.add(index + 1, tailStateRange);
+            }
+            return rv;
+        }
+
+        //  сформировать новый интервал к обработке и вызов processRangeWhenItBeforePossibleOf с index+1
+        range = new MapRange(range.dstBegin() + newRange.length(), range.srcBegin() + newRange.length(), range.length() - newRange.length());
+        rv.addAll(processRangeWhenItBeforePossibleOf(index + 1, range, sortedState));
+
+
+        return rv;
+    }
+
+    //  точка начала интервала dst range совпадает с точкой начала интервала src sortedState[index]
+    List<MapRange> processRangeWhenItStartingOf(int index, @Nonnull MapRange range, @Nonnull List<MapRange> sortedState) {
+        List<MapRange> rv = new ArrayList<>();
+
+        MapRange stateRange = sortedState.get(index);
+
+        MapRange newRange = new MapRange(stateRange.dstBegin(), range.srcBegin(), Math.min(range.length(), stateRange.length()));
+        rv.add(newRange);
+
+        if (range.length() == newRange.length()) {
+            //  весь интервал обработан
+            MapRange newRangeToState = new MapRange(stateRange.dstBegin() + newRange.length(), stateRange.srcBegin() + newRange.length(), stateRange.length() - newRange.length());
+            if (newRangeToState.isEmpty()) {
+                sortedState.remove(index);
+            } else {
+                sortedState.set(index, newRangeToState);
+            }
+            return rv;
+        }
+        //  у интервала остался необработанный хвост => отработан полностью интервал состояния
+        sortedState.remove(index);
+        //  оставшийся хвост
+        range = new MapRange(range.dstBegin() + newRange.length(), range.srcBegin() + newRange.length(), range.length() - newRange.length());
+        rv.addAll(processRangeWhenItBeforePossibleOf(index, range, sortedState));
+
+        return rv;
+    }
+
+    //  точка начала интервала dst range предшествует, не совпадая с точкой начала ВОЗМОЖНОГО интервала src sortedState[index]
+    List<MapRange> processRangeWhenItBeforePossibleOf(int index, @Nonnull MapRange range, @Nonnull List<MapRange> sortedState) {
+        List<MapRange> rv = new ArrayList<>();
+
+        if (index == sortedState.size()) {
+            //  справа интервалов больше нет
+            rv.add(range);
+        } else {
+            MapRange stateRange = sortedState.get(index);
+            if (stateRange.srcBegin() == range.dstBegin()) {
+                rv.addAll(processRangeWhenItStartingOf(index, range, sortedState));
+            } else {
+                rv.addAll(processRangeWhenItBeforeOf(index, range, sortedState));
+            }
+        }
+
+        return rv;
+    }
+
+    //  точка начала интервала dst range предшествует, не совпадая с точкой начала ТОЧНО СУЩЕСТВУЮЩЕГО интервала src sortedState[index]
+    List<MapRange> processRangeWhenItBeforeOf(int index, @Nonnull MapRange range, @Nonnull List<MapRange> sortedState) {
+        List<MapRange> rv = new ArrayList<>();
+        MapRange stateRange = sortedState.get(index);
+
+        if (stateRange.srcBegin() > range.getDstEnd()) {
+            //  нет пересечения
+            rv.add(range);
+            return rv;
+        }
+        //  пересечение есть
+        MapRange rangePrefix = new MapRange(range.dstBegin(), range.srcBegin(), stateRange.srcBegin() - range.dstBegin());
+        rv.add(rangePrefix);
+
+        range = new MapRange(stateRange.srcBegin(), range.srcBegin() + rangePrefix.length(), range.length() - rangePrefix.length());
+        rv.addAll(processRangeWhenItStartingOf(index, range, sortedState));
+
+        return rv;
     }
 
 }
