@@ -12,73 +12,11 @@ import java.util.function.LongUnaryOperator;
 @XSlf4j
 public class Main {
     public static void main(String[] args) {
-        MapRanges seedToSoil = new MapRanges(List.of(new MapRange(50, 98, 2), new MapRange(52, 50, 48)));
-        MapRanges soilToFertilizer = new MapRanges(List.of(new MapRange(0, 15, 37), new MapRange(37, 52, 2), new MapRange(39, 0, 15)));
+        DataProvider dataProvider = new SimpleDataProvider();
 
-        MapRanges result = Helper.composition(seedToSoil, soilToFertilizer);
-
-
-//        List<MapRange> sortedBySrcBeginState = soilToFertilizer.getCopyOfSortedBySrcBegin();
-//        Helper.processRangeWhenItStartingOf(2, new MapRange(52, 50, 48), sortedBySrcBeginState);
-
-//        List<Integer> list = List.of(5, 10, 17, 23, 28, 34, 39);
-//        log.debug("1: {}, {}", Collections.binarySearch(list, 1), Collections.binarySearch(list, 3));
-//        log.debug("2: {}, {}", Collections.binarySearch(list, 3), Collections.binarySearch(list, 7));
-//        log.debug("3: {}, {}", Collections.binarySearch(list, 12), Collections.binarySearch(list, 14));
-//        log.debug("4: {}, {}", Collections.binarySearch(list, 12), Collections.binarySearch(list, 30));
-//        log.debug("5: {}, {}", Collections.binarySearch(list, 25), Collections.binarySearch(list, 44));
-//        log.debug("6: {}, {}", Collections.binarySearch(list, 41), Collections.binarySearch(list, 44));
-
-
-//        long highBoundInclusive = seedToSoil.getMaxNotIntoItselfSrc();
-//        for (int i = 0; i <= highBoundInclusive; ++i) {
-//            if (seedToSoil.applyAsLong(i) != seedToSoil.get(i)) {
-//                throw new RuntimeException("seedToSoil on %d".formatted(i));
-//            }
-//        }
-//
-//        highBoundInclusive = soilToFertilizer.getMaxNotIntoItselfSrc();
-//        for (int i = 0; i <= highBoundInclusive; ++i) {
-//            if (soilToFertilizer.applyAsLong(i) != soilToFertilizer.get(i)) {
-//                throw new RuntimeException("soilToFertilizer on %d".formatted(i));
-//            }
-//        }
-
-
-
-//        Map<Long, Long> mapSeedToSoil = seedToSoil.asMap();
-//        log.debug("mapSeedToSoil: {}", mapSeedToSoil);
-//
-//        Map<Long, Long> mapSoilToFertilizer = soilToFertilizer.asMap();
-//        log.debug("mapSoilToFertilizer: {}", mapSoilToFertilizer);
-//
-//        Map<Long, Long> mapSeedToFertilizer = new HashMap<>();
-//        for (Map.Entry<Long, Long> entrySeedToSoil: mapSeedToSoil.entrySet()) {
-//            Long fertilizer = mapSoilToFertilizer.get(entrySeedToSoil.getValue());
-//            if (fertilizer == null) {
-//                fertilizer = entrySeedToSoil.getValue();
-//            }
-//            mapSeedToFertilizer.put(entrySeedToSoil.getKey(), fertilizer);
-//        }
-//        log.debug("mapSeedToFertilizer: {}", mapSeedToFertilizer);
-//
-//        MapRanges seedToFertilizer = Helper.fromMap(mapSeedToFertilizer);
-//        log.debug("seedToFertilizer: {}", seedToFertilizer);
-
-
-
-//        long highBoundInclusive = seedToSoil.getMaxNotIntoItselfSrc();
-//        Map<Long, Long> map = new HashMap<>();
-//        for (long i = 0; i <= highBoundInclusive; ++i) {
-//            map.put(i, soilToFertilizer.applyAsLong(seedToSoil.applyAsLong(i)));
-//        }
-//        log.debug("map: {}", map);
-//
-//        MapRanges seedToFertilizer = MapRanges.of(map);
-//        log.debug("seedToFertilizer: {}", seedToFertilizer);
-
-
+        CheckHelper.complexCheck(dataProvider.getSeedToSoil(), dataProvider.getSoilToFertilizer(), dataProvider.getFertilizerToWater(), dataProvider.getWaterToLight(), dataProvider.getLightToTemperature(), dataProvider.getTemperatureToHumidity(), dataProvider.getHumidityToLocation());
     }
+
 }
 
 @XSlf4j
@@ -87,7 +25,7 @@ public class Main {
 class MapRanges implements LongUnaryOperator {
     final List<MapRange> sortedBySrcBegin;
     MapRanges(Collection<MapRange> mapRanges) {
-        sortedBySrcBegin = Helper.sortBySrcBegin(mapRanges);
+        sortedBySrcBegin = Helper.tryReduce(Helper.sortBySrcBegin(mapRanges));
     }
     public Long getMaxNotIntoItselfSrc() {
         log.entry();
@@ -171,45 +109,41 @@ class Helper {
 
         return log.exit(sortedBySrcBegin);
     }
+    List<MapRange> tryReduce(@Nonnull List<MapRange> sortedRanges) {
+        log.entry(sortedRanges);
 
-    MapRanges fromMap(@Nonnull Map<Long, Long> map) {
-        log.entry(map);
+        List<MapRange> rv = new ArrayList<>();
 
-        if (!isSuitable(map)) {
-            throw new IllegalArgumentException("input map is not suitable");
+        if (sortedRanges.isEmpty()) {
+            return log.exit(rv);
         }
 
-        List<MapRange> mapRanges = new ArrayList<>();
-        long currentShift = 0;
-        long srcBegin = 0;
-        for (long i = 0; i < map.size(); ++i) {
-            long shift = map.get(i) - i;
-            if (shift != currentShift) {
-                if (currentShift != 0) {
-                    mapRanges.add(new MapRange(srcBegin + currentShift, srcBegin, i-srcBegin));
-                }
-                srcBegin = i;
-                currentShift = shift;
+        MapRange leftRange = sortedRanges.get(0);
+        for (int cnt = 1; cnt < sortedRanges.size(); ++cnt) {
+            MapRange rightRange = sortedRanges.get(cnt);
+            Optional<MapRange> optionalMapRange = tryReduce(leftRange, rightRange);
+            if (optionalMapRange.isPresent()) {
+                leftRange = optionalMapRange.get();
+            } else {
+                rv.add(leftRange);
+                leftRange = rightRange;
             }
         }
-        if (currentShift != 0) {
-            mapRanges.add(new MapRange(srcBegin + currentShift, srcBegin, map.size()-srcBegin));
-        }
-        log.debug("mapRanges={}", mapRanges);
+        rv.add(leftRange);
 
-        return log.exit(new MapRanges(mapRanges));
+        log.debug("reduce ratio: {}", (double)rv.size() / sortedRanges.size());
+
+        return log.exit(rv);
+    }
+    Optional<MapRange> tryReduce(@Nonnull MapRange leftRange, @Nonnull MapRange rightRange) {
+        log.entry(leftRange, rightRange);
+        return log.exit(
+                (leftRange.getSrcEndExclusive() == rightRange.srcBegin() && leftRange.getShift() == rightRange.getShift()) ?
+                    Optional.of(new MapRange(leftRange.dstBegin(), leftRange.srcBegin(), leftRange.length() + rightRange.length())) :
+                    Optional.empty()
+        );
     }
 
-    private boolean isSuitable(@Nonnull Map<Long, Long> map) {
-        log.entry(map);
-
-        if (map.isEmpty()) {
-            return log.exit(true);
-        }
-        Set<Long> keySet = map.keySet();
-
-        return log.exit(Collections.min(keySet) == 0 && Collections.max(keySet) == keySet.size() - 1 && keySet.equals(new HashSet<>(map.values())));
-    }
 
     Optional<MapRange> resolveRange(long val, List<MapRange> sortedBySrcBegin) {
         log.entry(val);
@@ -374,3 +308,5 @@ class Helper {
     }
 
 }
+
+
