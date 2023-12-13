@@ -2,24 +2,102 @@ package am.home;
 
 import jakarta.annotation.Nonnull;
 import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.ToString;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.XSlf4j;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.io.LineIterator;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 
+import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
 import java.util.function.LongUnaryOperator;
 
 @XSlf4j
 public class Main {
     public static void main(String[] args) {
+
+//        checkVT();
+
+        //  simple
         DataProvider dataProvider = new SimpleDataProvider();
+        CheckHelper.complexCheck(dataProvider.getSeedToSoil(), dataProvider.getSoilToFertilizer(), dataProvider.getFertilizerToWater(), dataProvider.getWaterToLight(), dataProvider.getLightToTemperature(), dataProvider.getTemperatureToHumidity(), dataProvider.getHumidityToLocation());
+
+        //  input1
+        LineIterator it = IOUtils.lineIterator(
+                Main.class.getClassLoader().getResourceAsStream("input1.txt"),
+//                Main.class.getClassLoader().getResourceAsStream("test1.txt"),
+                StandardCharsets.UTF_8);
+        try {
+            dataProvider = new LinesBasedDataProvider(it);
+        } finally {
+            LineIterator.closeQuietly(it);
+        }
+
+        log.info("getMaxNotIntoItselfSrc():\nSeedToSoil: {}\nSoilToFertilizer: {}\nFertilizerToWater: {}\nWaterToLight: {}\nLightToTemperature: {}\nTemperatureToHumidity: {}\nHumidityToLocation: {}",
+                dataProvider.getSeedToSoil().getMaxNotIntoItselfSrc(), dataProvider.getSoilToFertilizer().getMaxNotIntoItselfSrc(), dataProvider.getFertilizerToWater().getMaxNotIntoItselfSrc(),
+                dataProvider.getWaterToLight().getMaxNotIntoItselfSrc(), dataProvider.getLightToTemperature().getMaxNotIntoItselfSrc(), dataProvider.getTemperatureToHumidity().getMaxNotIntoItselfSrc(),
+                dataProvider.getHumidityToLocation().getMaxNotIntoItselfSrc());
 
         CheckHelper.complexCheck(dataProvider.getSeedToSoil(), dataProvider.getSoilToFertilizer(), dataProvider.getFertilizerToWater(), dataProvider.getWaterToLight(), dataProvider.getLightToTemperature(), dataProvider.getTemperatureToHumidity(), dataProvider.getHumidityToLocation());
+
+
+    }
+
+    private static void checkVT() {
+        ThreadFactory factory = Thread.ofVirtual().name("vt-", 0).factory();
+        try(var executorService = Executors.newThreadPerTaskExecutor(factory)) {
+            List<Future> futureList = new ArrayList<>();
+            log.info("before start virtual threads");
+            for (int i = 0; i < 5; i++) {
+                int cnt = i;
+                futureList.add(executorService.submit(() -> {
+                    log.info("start cnt={}", cnt);
+                    if (cnt % 2 == 0) {
+                        throw new RuntimeException("%s: %d is even".formatted(Thread.currentThread().getName(), cnt));
+                    }
+                    log.info("finish cnt={}", cnt);
+                }));
+            }
+            log.info("finish arranged {} virtual threads", futureList.size());
+
+            //  first
+            futureList.forEach(future -> {
+                try {
+                    future.get();
+                } catch (ExecutionException executionException) {
+                    Throwable cause = ExceptionUtils.getRootCause(executionException);
+                    log.info("have exception ExecutionException: cause class={}, message={}", cause.getClass(), cause.getMessage());
+                } catch (Exception ex) {
+                    log.error("have exception", ex);
+                }
+            });
+
+            log.info("second time try view on futures", futureList.size());
+            futureList.forEach(future -> {
+                try {
+                    future.get();
+                } catch (ExecutionException executionException) {
+                    Throwable cause = ExceptionUtils.getRootCause(executionException);
+                    log.info("have exception ExecutionException: cause class={}, message={}", cause.getClass(), cause.getMessage());
+                } catch (Exception ex) {
+                    log.error("have exception", ex);
+                }
+            });
+
+        }
     }
 
 }
 
 @XSlf4j
+@Getter
 @ToString
 @EqualsAndHashCode
 class MapRanges implements LongUnaryOperator {
