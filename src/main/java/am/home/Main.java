@@ -6,10 +6,14 @@ import lombok.Getter;
 import lombok.ToString;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.XSlf4j;
+import lombok.val;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.LineIterator;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.LongRange;
 import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -18,6 +22,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 import java.util.function.LongUnaryOperator;
+import java.util.stream.LongStream;
+import java.util.stream.Stream;
 
 @XSlf4j
 public class Main {
@@ -27,25 +33,104 @@ public class Main {
 
         //  simple
         DataProvider dataProvider = new SimpleDataProvider();
-        CheckHelper.complexCheck(dataProvider.getSeedToSoil(), dataProvider.getSoilToFertilizer(), dataProvider.getFertilizerToWater(), dataProvider.getWaterToLight(), dataProvider.getLightToTemperature(), dataProvider.getTemperatureToHumidity(), dataProvider.getHumidityToLocation());
+//        CheckHelper.check(dataProvider, 10);
+
+//        MapRanges seedToLocation = Helper.composition(
+//                dataProvider.getSeedToSoil(),
+//                dataProvider.getSoilToFertilizer(),
+//                dataProvider.getFertilizerToWater(),
+//                dataProvider.getWaterToLight(),
+//                dataProvider.getLightToTemperature(),
+//                dataProvider.getTemperatureToHumidity(),
+//                dataProvider.getHumidityToLocation());
+//
+//        Map<Long, Long> result = new HashMap<>();
+//        dataProvider.getSeeds().stream().flatMap(longRange -> LongStream.rangeClosed(longRange.getMinimum(), longRange.getMaximum()).boxed()).forEach(aLong -> result.put(aLong, seedToLocation.applyAsLong(aLong)));
+//        log.info("result: {}", result);
+//
+//        log.info("min: {}", dataProvider.getSeeds().stream().flatMap(longRange -> LongStream.rangeClosed(longRange.getMinimum(), longRange.getMaximum()).boxed()).map(seedToLocation::applyAsLong).min(Long::compareTo));
+//
+//        CheckHelper.checkSeedsRanges(dataProvider.getSeeds2(), dataProvider.getSeedToSoil(), 10);
+//        CheckHelper.checkSeedsRanges(dataProvider.getSeeds2(), seedToLocation, 10);
+
+
+
+//        CheckHelper.complexCheck(dataProvider.getSeedToSoil(), dataProvider.getSoilToFertilizer(), dataProvider.getFertilizerToWater(), dataProvider.getWaterToLight(), dataProvider.getLightToTemperature(), dataProvider.getTemperatureToHumidity(), dataProvider.getHumidityToLocation());
 
         //  input1
         LineIterator it = IOUtils.lineIterator(
                 Main.class.getClassLoader().getResourceAsStream("input1.txt"),
-//                Main.class.getClassLoader().getResourceAsStream("test1.txt"),
                 StandardCharsets.UTF_8);
         try {
             dataProvider = new LinesBasedDataProvider(it);
         } finally {
             LineIterator.closeQuietly(it);
         }
+//        log.info("seeds: {}", dataProvider.getSeeds());
 
-        log.info("getMaxNotIntoItselfSrc():\nSeedToSoil: {}\nSoilToFertilizer: {}\nFertilizerToWater: {}\nWaterToLight: {}\nLightToTemperature: {}\nTemperatureToHumidity: {}\nHumidityToLocation: {}",
-                dataProvider.getSeedToSoil().getMaxNotIntoItselfSrc(), dataProvider.getSoilToFertilizer().getMaxNotIntoItselfSrc(), dataProvider.getFertilizerToWater().getMaxNotIntoItselfSrc(),
-                dataProvider.getWaterToLight().getMaxNotIntoItselfSrc(), dataProvider.getLightToTemperature().getMaxNotIntoItselfSrc(), dataProvider.getTemperatureToHumidity().getMaxNotIntoItselfSrc(),
-                dataProvider.getHumidityToLocation().getMaxNotIntoItselfSrc());
+//        CheckHelper.check(dataProvider, 100_000_000);
 
-        CheckHelper.complexCheck(dataProvider.getSeedToSoil(), dataProvider.getSoilToFertilizer(), dataProvider.getFertilizerToWater(), dataProvider.getWaterToLight(), dataProvider.getLightToTemperature(), dataProvider.getTemperatureToHumidity(), dataProvider.getHumidityToLocation());
+        List<List<MapRange>> listForSeeds = List.of(
+                dataProvider.getSeeds().stream().map(longRange -> MapRange.ofSelfMap(longRange.getMinimum(), longRange.getMaximum() - longRange.getMinimum() + 1)).toList(),
+                dataProvider.getSeedToSoil().getCopyOfSortedBySrcBegin(),
+                dataProvider.getSoilToFertilizer().getCopyOfSortedBySrcBegin(),
+                dataProvider.getFertilizerToWater().getCopyOfSortedBySrcBegin(),
+                dataProvider.getWaterToLight().getCopyOfSortedBySrcBegin(),
+                dataProvider.getLightToTemperature().getCopyOfSortedBySrcBegin(),
+                dataProvider.getTemperatureToHumidity().getCopyOfSortedBySrcBegin(),
+                dataProvider.getHumidityToLocation().getCopyOfSortedBySrcBegin()
+        );
+        List<MapRange> resultListForSeeds = Helper.processFirstListComposition(listForSeeds);
+        MapRange mapRangeMinDst = resultListForSeeds.get(0);
+        for (int i = 1; i < resultListForSeeds.size(); ++i) {
+            MapRange mapRangeCandidat = resultListForSeeds.get(i);
+            if (mapRangeCandidat.dstBegin() < mapRangeMinDst.dstBegin()) {
+                mapRangeMinDst = mapRangeCandidat;
+            }
+        }
+        log.info("result part1: {}", mapRangeMinDst);
+
+        listForSeeds = List.of(
+                dataProvider.getSeeds2().stream().map(longRange -> MapRange.ofSelfMap(longRange.getMinimum(), longRange.getMaximum() - longRange.getMinimum() + 1)).toList(),
+                dataProvider.getSeedToSoil().getCopyOfSortedBySrcBegin(),
+                dataProvider.getSoilToFertilizer().getCopyOfSortedBySrcBegin(),
+                dataProvider.getFertilizerToWater().getCopyOfSortedBySrcBegin(),
+                dataProvider.getWaterToLight().getCopyOfSortedBySrcBegin(),
+                dataProvider.getLightToTemperature().getCopyOfSortedBySrcBegin(),
+                dataProvider.getTemperatureToHumidity().getCopyOfSortedBySrcBegin(),
+                dataProvider.getHumidityToLocation().getCopyOfSortedBySrcBegin()
+        );
+        resultListForSeeds = Helper.processFirstListComposition(listForSeeds);
+        mapRangeMinDst = resultListForSeeds.get(0);
+        for (int i = 1; i < resultListForSeeds.size(); ++i) {
+            MapRange mapRangeCandidat = resultListForSeeds.get(i);
+            if (mapRangeCandidat.dstBegin() < mapRangeMinDst.dstBegin()) {
+                mapRangeMinDst = mapRangeCandidat;
+            }
+        }
+        log.info("result part2: {}", mapRangeMinDst);
+
+
+//        MapRanges seedToLocation1 = Helper.composition(
+//                dataProvider.getSeedToSoil(),
+//                dataProvider.getSoilToFertilizer(),
+//                dataProvider.getFertilizerToWater(),
+//                dataProvider.getWaterToLight(),
+//                dataProvider.getLightToTemperature(),
+//                dataProvider.getTemperatureToHumidity(),
+//                dataProvider.getHumidityToLocation());
+//
+//        CheckHelper.checkSeedsRanges(dataProvider.getSeeds2(), dataProvider.getSeedToSoil(), 100_000_000);
+//        CheckHelper.checkSeedsRanges(dataProvider.getSeeds2(), seedToLocation1, 100_000_000);
+//
+//        log.info("min: {}", dataProvider.getSeeds().stream().flatMap(longRange -> LongStream.rangeClosed(longRange.getMinimum(), longRange.getMaximum()).boxed()).map(seedToLocation1::applyAsLong).min(Long::compareTo));
+
+//        log.info("getMaxNotIntoItselfSrc():\nSeedToSoil: {}\nSoilToFertilizer: {}\nFertilizerToWater: {}\nWaterToLight: {}\nLightToTemperature: {}\nTemperatureToHumidity: {}\nHumidityToLocation: {}",
+//                dataProvider.getSeedToSoil().getMaxNotIntoItselfSrc(), dataProvider.getSoilToFertilizer().getMaxNotIntoItselfSrc(), dataProvider.getFertilizerToWater().getMaxNotIntoItselfSrc(),
+//                dataProvider.getWaterToLight().getMaxNotIntoItselfSrc(), dataProvider.getLightToTemperature().getMaxNotIntoItselfSrc(), dataProvider.getTemperatureToHumidity().getMaxNotIntoItselfSrc(),
+//                dataProvider.getHumidityToLocation().getMaxNotIntoItselfSrc());
+//
+//        CheckHelper.complexCheck(dataProvider.getSeedToSoil(), dataProvider.getSoilToFertilizer(), dataProvider.getFertilizerToWater(), dataProvider.getWaterToLight(), dataProvider.getLightToTemperature(), dataProvider.getTemperatureToHumidity(), dataProvider.getHumidityToLocation());
 
 
     }
@@ -144,8 +229,8 @@ class MapRanges implements LongUnaryOperator {
 }
 
 record MapRange(long dstBegin, long srcBegin, long length) {
-    private MapRange(long item) {
-        this(item, item, 1);
+    private MapRange(long item, long length) {
+        this(item, item, length);
     }
     boolean isEmpty() {
         return length <= 0;
@@ -166,8 +251,15 @@ record MapRange(long dstBegin, long srcBegin, long length) {
         return dstBegin - srcBegin;
     }
 
+    boolean containsSrc(long item) {
+        return srcBegin <= item && item < getSrcEndExclusive();
+    }
+
     static MapRange ofItem(long item) {
-        return new MapRange(item);
+        return ofSelfMap(item, 1);
+    }
+    static MapRange ofSelfMap(long item, long length) {
+        return new MapRange(item, length);
     }
 }
 
@@ -226,39 +318,147 @@ class Helper {
     Optional<MapRange> resolveRange(long val, List<MapRange> sortedBySrcBegin) {
         log.entry(val);
 
-        if (sortedBySrcBegin.isEmpty()) {
+        if (sortedBySrcBegin.isEmpty() || val < sortedBySrcBegin.get(0).srcBegin() || val > sortedBySrcBegin.get(sortedBySrcBegin.size() - 1).getSrcEnd()) {
             return log.exit(Optional.empty());
         }
+
         int indexOfRange = Collections.binarySearch(sortedBySrcBegin, MapRange.ofItem(val), CMP_BY_SRC_BEGIN);
         log.debug("index for {} is {}", val, indexOfRange);
         if (indexOfRange >= 0) {
+            //  попали в точку начала интервала
             return log.exit(Optional.of(sortedBySrcBegin.get(indexOfRange)));
         }
 
         indexOfRange = -(indexOfRange + 2);
         if (indexOfRange < 0) {
-            return log.exit(Optional.empty());
+            //  попали перед первым интервалом
+            //  это исключено ранее
+            throw new IllegalStateException("in resolveRange for val=%d detected indexOfRange=%d for sortedBySrcBegin=%s".formatted(val, -indexOfRange-2, sortedBySrcBegin.toString()));
         }
+        //  ближайший интервал, точка начала которого слева от val
         MapRange range = sortedBySrcBegin.get(indexOfRange);
         log.debug("candidate range: {}", range);
 
         return log.exit(val > range.getSrcEnd() ? Optional.empty() : Optional.of(range));
     }
 
+    //  todo проверить
+    //  индексы начального и конечного интервалов из sortedBySrcBegin достаточных для того, чтобы замапить val
+    //  null - маппинг k->k для каждого из val
+    Pair<Integer, Integer> resolveIndexesSubListForMapping(LongRange val, List<MapRange> sortedBySrcBegin) {
+        log.entry(val);
+
+        if (sortedBySrcBegin.isEmpty()) {
+            return log.exit(null);
+        }
+
+        MapRange firstRange = sortedBySrcBegin.get(0);
+        if (val.getMaximum() < firstRange.srcBegin()) {
+            //  вх. интервал слева от всех интервалов для маппинга
+            return log.exit(null);
+        }
+
+        MapRange lastRange = sortedBySrcBegin.get(sortedBySrcBegin.size() - 1);
+        if (lastRange.getSrcEnd() < val.getMinimum()) {
+            //  вх. интервал справа от всех интервалов для маппинга
+            return log.exit(null);
+        }
+
+        Integer leftIndex;
+        int indexOfRange = Collections.binarySearch(sortedBySrcBegin, MapRange.ofItem(val.getMinimum()), CMP_BY_SRC_BEGIN);
+        log.debug("index for {} is {}", val.getMinimum(), indexOfRange);
+        if (indexOfRange >= 0) {
+            //  попали в точку начала интервала
+            leftIndex = indexOfRange;
+        } else {
+            indexOfRange = -(indexOfRange + 2);
+            if (indexOfRange < 0) {
+                //  попали перед первым интервалом (точно с ним пересекаемся)
+                leftIndex = 0;
+            } else {
+                //  ближайший интервал, точка начала которого слева от val.getMinimum()
+                MapRange range = sortedBySrcBegin.get(indexOfRange);
+                leftIndex = indexOfRange;
+                if (range.getSrcEnd() < val.getMinimum()) {
+                    //  справа точно есть еще интервал
+                    ++leftIndex;
+                }
+            }
+        }
+
+        Integer rightIndexFromLeftIndex;
+        List<MapRange> listForRightIndex = sortedBySrcBegin.subList(leftIndex, sortedBySrcBegin.size());
+        indexOfRange = Collections.binarySearch(listForRightIndex, MapRange.ofItem(val.getMaximum()), CMP_BY_SRC_BEGIN);
+        if (indexOfRange >= 0) {
+            //  попали в точку начала интервала
+            rightIndexFromLeftIndex = indexOfRange;
+        } else {
+            indexOfRange = -(indexOfRange + 2);
+            if (indexOfRange < 0) {
+                //  попали перед первым интервалом (точно с ним пересекаемся)
+                //  это невозможно
+                throw new IllegalStateException("in resolveRange for val.getMaximum()=%d detected indexOfRange=%d for listForRightIndex=%s".formatted(val.getMaximum(), -indexOfRange-2, listForRightIndex.toString()));
+            } else {
+                //  ближайший интервал, точка начала которого слева от val.getMaximum()
+                rightIndexFromLeftIndex = indexOfRange;
+            }
+        }
+
+        return log.exit(Pair.of(leftIndex, leftIndex + rightIndexFromLeftIndex));
+    }
+
+    MapRanges composition(@Nonnull MapRanges... mapRanges) {
+        log.entry(mapRanges);
+
+        if (mapRanges.length < 2) {
+            throw new IllegalArgumentException("needs 2 maps at least");
+        }
+        if (mapRanges.length == 2) {
+            return log.exit(composition(mapRanges[0], mapRanges[1]));
+        }
+
+        return log.exit(composition(mapRanges[0], composition(ArrayUtils.subarray(mapRanges, 1, mapRanges.length))));
+    }
     MapRanges composition(@Nonnull MapRanges first, @Nonnull MapRanges second) {
         log.entry(first, second);
 
-        List<MapRange> firstList = first.getCopyOfSortedBySrcBegin();
         List<MapRange> stateList = second.getCopyOfSortedBySrcBegin();
-        List<MapRange> resultList = new ArrayList<>();
-
-        for (MapRange range: firstList) {
-            List<MapRange> rangeResultList = processRange(range, stateList);
-            resultList.addAll(rangeResultList);
-        }
+        List<MapRange> resultList = processFirstListComposition(first.getCopyOfSortedBySrcBegin(), stateList);
         resultList.addAll(stateList);
 
         return log.exit(new MapRanges(resultList));
+    }
+
+    List<MapRange> processFirstListComposition(@Nonnull List<List<MapRange>> list) {
+        log.entry(list);
+
+        if (list.isEmpty()) {
+            return log.exit(new ArrayList<>());
+        }
+        if (list.size() == 1) {
+            return log.exit(new ArrayList<>(list.get(0)));
+        }
+        if (list.size() == 2) {
+            return log.exit(processFirstListComposition(list.get(0), list.get(1)));
+        }
+
+        List<List<MapRange>> newList = new ArrayList<>();
+        newList.add(processFirstListComposition(list.get(0), list.get(1)));
+        newList.addAll(list.subList(2, list.size()));
+
+        return log.exit(processFirstListComposition(newList));
+    }
+
+    List<MapRange> processFirstListComposition(@Nonnull List<MapRange> firstSortedBySrcBeginList, @Nonnull List<MapRange> stateSortedBySrcBeginList) {
+        log.entry(firstSortedBySrcBeginList, stateSortedBySrcBeginList);
+
+        List<MapRange> resultList = new ArrayList<>();
+        for (MapRange range: firstSortedBySrcBeginList) {
+            List<MapRange> rangeResultList = processRange(range, stateSortedBySrcBeginList);
+            resultList.addAll(rangeResultList);
+        }
+
+        return log.exit(resultList);
     }
 
     List<MapRange> processRange(@Nonnull MapRange range, @Nonnull List<MapRange> sortedState) {

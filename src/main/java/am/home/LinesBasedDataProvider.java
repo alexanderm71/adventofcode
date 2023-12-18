@@ -4,8 +4,10 @@ import jakarta.annotation.Nonnull;
 import lombok.Getter;
 import lombok.extern.slf4j.XSlf4j;
 import org.apache.commons.io.LineIterator;
+import org.apache.commons.lang3.LongRange;
 
 import java.util.*;
+import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
 @XSlf4j
@@ -23,8 +25,10 @@ public class LinesBasedDataProvider implements DataProvider {
     private static final Set<String> TOKENS_OF_MAP = Set.of(TOKEN_SEED_TO_SOIL, TOKEN_SOIL_TO_FERTILIZER, TOKEN_FERTILIZER_TO_WATER, TOKEN_WATER_TO_LIGHT, TOKEN_LIGHT_TO_TEMPERATURE, TOKEN_TEMPERATURE_TO_HUMIDITY, TOKEN_HUMIDITY_TO_LOCATION);
 
     final Map<String, MapRanges> maps = new HashMap<>();
-
-
+    @Getter
+    final List<LongRange> seeds = new ArrayList<>();
+    @Getter
+    final List<LongRange> seeds2 = new ArrayList<>();
 
     LinesBasedDataProvider(LineIterator lineIterator) {
         while (lineIterator.hasNext()) {
@@ -32,7 +36,25 @@ public class LinesBasedDataProvider implements DataProvider {
             if (TOKENS_OF_MAP.contains(line)) {
                 maps.put(line, new MapRanges(readMap(lineIterator)));
             } else if (line.startsWith(TOKEN_SEEDS)) {
-                //  todo seeds read
+                String[] strings = line.substring(TOKEN_SEEDS.length()).trim().split("\s");
+                if (strings.length == 0) {
+                    return;
+                }
+                seeds.addAll(Arrays.stream(strings).map(s -> Long.parseLong(s)).mapToLong(Long::longValue).sorted().mapToObj(aLong -> LongRange.of(aLong, aLong)).toList());
+
+                if (strings.length % 2 != 0) {
+                    log.warn("an even number of seeds is expected but have {}", strings.length);
+                    return;
+                }
+                for (int i = 0; i < strings.length; i+=2) {
+                    long start = Long.parseLong(strings[i]);
+                    long length = Long.parseLong(strings[i+1]);
+                    if (length > 0) {
+                        seeds2.add(LongRange.of(start, start + length - 1));
+                    }
+                }
+                Collections.sort(seeds2, Comparator.comparingLong(LongRange::getMinimum));
+
             }
         }
     }

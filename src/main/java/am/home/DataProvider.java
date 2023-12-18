@@ -1,5 +1,10 @@
 package am.home;
 
+
+
+import org.apache.commons.lang3.LongRange;
+import org.apache.commons.lang3.Range;
+
 import java.util.List;
 
 public interface DataProvider {
@@ -10,4 +15,7 @@ public interface DataProvider {
     MapRanges getLightToTemperature();
     MapRanges getTemperatureToHumidity();
     MapRanges getHumidityToLocation();
+
+    List<LongRange> getSeeds();
+    List<LongRange> getSeeds2();
 }
